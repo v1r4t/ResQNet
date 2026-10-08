@@ -6,3 +6,8 @@ export const getNetworkState = async (): Promise<NetworkState> => {
   const response = await api.get('/network/state')
   return response.data
 }
+
+export const getRoadHistory = async (roadId: number) => {
+  const response = await api.get(`/network/roads/${roadId}/history`)
+  return response.data
+}
