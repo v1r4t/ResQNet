@@ -1,5 +1,5 @@
 # backend/app/modules/network/router.py
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from app.modules.network import service
 
 router = APIRouter(prefix="/api/network", tags=["network"])
@@ -10,7 +10,10 @@ def network_state():
 
 @router.get("/version")
 def network_version():
-    return service.get_network_version()
+    result = service.get_network_version()
+    if result is None:
+        raise HTTPException(status_code=404, detail="No active network version found")
+    return result
 
 @router.get("/history/{road_id}")
 def road_history(road_id: int):

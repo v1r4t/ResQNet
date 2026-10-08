@@ -9,7 +9,16 @@ VALID_SEVERITIES = {"low", "medium", "high", "critical"}
 
 def submit_report(raw_text: str) -> dict:
     extractor = get_extractor()
-    extracted = extractor.extract(raw_text)
+    extraction_fallback = False
+    try:
+        extracted = extractor.extract(raw_text)
+    except Exception:
+        # Fallback to mock extraction on LLM failure
+        from app.llm.mock_extractor import MockExtractor
+        fallback_extractor = MockExtractor()
+        extracted = fallback_extractor.extract(raw_text)
+        extractor = fallback_extractor
+        extraction_fallback = True
 
     conn = get_connection()
     try:
@@ -17,7 +26,7 @@ def submit_report(raw_text: str) -> dict:
             # Insert report with dynamic extraction metadata
             cur.execute(
                 "INSERT INTO incident_report (raw_text, extracted_data, extraction_confidence, extraction_source, extraction_fallback) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (raw_text, json.dumps(extracted.model_dump()), extractor.confidence, extractor.source, False)
+                (raw_text, json.dumps(extracted.model_dump()), extractor.confidence, extractor.source, extraction_fallback)
             )
             report_id = cur.fetchone()[0]
 
@@ -41,7 +50,7 @@ def submit_report(raw_text: str) -> dict:
                 "incident_id": incident_id,
                 "extracted_data": extracted.model_dump(),
                 "extraction_source": extractor.source,
-                "extraction_fallback": False,
+                "extraction_fallback": extraction_fallback,
                 "affected_roads": affected_roads
             }
     except Exception as e:
@@ -103,6 +112,22 @@ def get_incidents(status: str = None, severity: str = None, zone_id: int = None)
             cur.execute(query, params)
             columns = [desc[0] for desc in cur.description]
             return [dict(zip(columns, row)) for row in cur.fetchall()]
+    finally:
+        release_connection(conn)
+
+def get_incident_by_id(incident_id: int) -> dict:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT i.id, i.type, i.severity, i.status, i.description, i.started_at, i.cleared_at
+                FROM incident i WHERE i.id = %s
+            """, (incident_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            columns = [desc[0] for desc in cur.description]
+            return dict(zip(columns, row))
     finally:
         release_connection(conn)
 

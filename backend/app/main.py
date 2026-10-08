@@ -1,8 +1,10 @@
 # backend/app/main.py
+import threading
 from fastapi import FastAPI
 from app.database import pool
 from app.modules.incidents.router import router as incidents_router
 from app.modules.routing.router import router as routing_router
+from app.modules.routing.worker import run_worker
 from app.modules.vehicles.router import router as vehicles_router
 from app.modules.analytics.router import router as analytics_router
 from app.modules.network.router import router as network_router
@@ -21,6 +23,9 @@ def health():
 @app.on_event("startup")
 def startup():
     pool.wait()
+    # Start the route recalculation worker in a background thread
+    worker_thread = threading.Thread(target=run_worker, kwargs={"interval_seconds": 10}, daemon=True)
+    worker_thread.start()
 
 @app.on_event("shutdown")
 def shutdown():

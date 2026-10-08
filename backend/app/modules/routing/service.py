@@ -26,7 +26,7 @@ def get_network_snapshot() -> dict:
     finally:
         release_connection(conn)
 
-def calculate_route(origin_id: int, destination_id: int, vehicle_id: int = None, priority: int = 5) -> dict:
+def calculate_route(origin_id: int, destination_id: int, vehicle_id: int = None, priority: int = 5, status: str = 'active') -> dict:
     # Get network snapshot (no transaction held during routing)
     graph, segment_times = get_network_snapshot()
 
@@ -59,8 +59,8 @@ def calculate_route(origin_id: int, destination_id: int, vehicle_id: int = None,
 
             # Create route
             cur.execute(
-                "INSERT INTO route (request_id, route_type, total_time_min, total_distance_m, status, network_version_id) VALUES (%s, 'fastest', %s, %s, 'active', %s) RETURNING id",
-                (request_id, result.total_time, result.total_distance, network_version_id)
+                "INSERT INTO route (request_id, route_type, total_time_min, total_distance_m, status, network_version_id) VALUES (%s, 'fastest', %s, %s, %s, %s) RETURNING id",
+                (request_id, result.total_time, result.total_distance, status, network_version_id)
             )
             route_id = cur.fetchone()[0]
 
@@ -81,12 +81,37 @@ def calculate_route(origin_id: int, destination_id: int, vehicle_id: int = None,
         release_connection(conn)
 
 def recalculate_routes() -> dict:
-    # Phase 1: Read queue entries in a transaction, then commit
+    # Phase 1: Read queue entries and capture all affected route IDs once (dedupe)
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT id, road_segment_id FROM route_recalculation_queue WHERE status = 'pending'")
             pending = cur.fetchall()
+
+            # Dedupe queue entries by road_segment_id to avoid redundant processing
+            unique_road_ids = set()
+            for queue_id, road_id in pending:
+                unique_road_ids.add(road_id)
+
+            # Capture all affected route IDs once (dedupe across queue entries)
+            # Only look for 'active' routes to avoid exponential growth
+            affected_route_ids = set()
+            for road_id in unique_road_ids:
+                cur.execute("""
+                    SELECT r.id FROM route r
+                    JOIN route_segment rs ON r.id = rs.route_id
+                    WHERE rs.road_segment_id = %s AND r.status = 'active'
+                """, (road_id,))
+                for row in cur.fetchall():
+                    affected_route_ids.add(row[0])
+
+            # Mark old routes as cancelled
+            if affected_route_ids:
+                cur.execute(
+                    "UPDATE route SET status = 'cancelled' WHERE id = ANY(%s)",
+                    (list(affected_route_ids),)
+                )
+
             conn.commit()
     except Exception as e:
         conn.rollback()
@@ -94,42 +119,41 @@ def recalculate_routes() -> dict:
     finally:
         release_connection(conn)
 
-    # Phase 2: Process each entry outside of any transaction
+    # Phase 2: Process each affected route (outside transaction)
     results = []
-    for queue_id, road_id in pending:
-        # Find affected routes (both active and stale)
+    for route_id in affected_route_ids:
+        # Get the route's origin and destination
         conn = get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT r.id, rr.origin_id, rr.destination_id
-                    FROM route r
+                    SELECT rr.origin_id, rr.destination_id FROM route r
                     JOIN route_request rr ON r.request_id = rr.id
-                    WHERE r.status IN ('active', 'stale')
-                    AND r.id IN (
-                        SELECT rs.route_id FROM route_segment rs WHERE rs.road_segment_id = %s
-                    )
-                """, (road_id,))
-                affected = cur.fetchall()
+                    WHERE r.id = %s
+                """, (route_id,))
+                row = cur.fetchone()
+                if row:
+                    origin, dest = row
         finally:
             release_connection(conn)
 
-        for route_id, origin, dest in affected:
-            result = calculate_route(origin, dest)
-            if result:
-                results.append(result)
+        # Calculate new route with 'recalculated' status to prevent exponential growth
+        result = calculate_route(origin, dest, status='recalculated')
+        if result:
+            results.append(result)
 
-        # Mark entry as completed in a separate transaction
-        conn = get_connection()
-        try:
-            with conn.cursor() as cur:
+    # Phase 3: Mark queue entries as completed
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            for queue_id, road_id in pending:
                 cur.execute("UPDATE route_recalculation_queue SET status = 'completed', processed_at = NOW() WHERE id = %s", (queue_id,))
-                conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            release_connection(conn)
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        release_connection(conn)
 
     return {"recalculated": len(results), "routes": results}
 

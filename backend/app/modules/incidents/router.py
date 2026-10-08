@@ -28,13 +28,20 @@ def list_incidents(
 def incident_history():
     return service.get_incident_history()
 
+@router.get("/nearby")
+def nearby_incidents(lat: float = Query(...), lon: float = Query(...), radius_m: float = Query(1000)):
+    return service.get_nearby_incidents(lat, lon, radius_m)
+
+@router.get("/{incident_id}")
+def get_incident(incident_id: int):
+    result = service.get_incident_by_id(incident_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    return result
+
 @router.post("/{incident_id}/clear")
 def clear_incident(incident_id: int):
     try:
         return service.clear_incident(incident_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
-@router.get("/nearby")
-def nearby_incidents(lat: float = Query(...), lon: float = Query(...), radius_m: float = Query(1000)):
-    return service.get_nearby_incidents(lat, lon, radius_m)

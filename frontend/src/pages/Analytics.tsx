@@ -1,7 +1,7 @@
 // frontend/src/pages/Analytics.tsx
 import { useQuery } from '@tanstack/react-query'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts'
-import { getCongestion, getIncidentFrequency } from '../api/analytics'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ScatterChart, Scatter, LineChart, Line, Legend } from 'recharts'
+import { getCongestion, getIncidentFrequency, getRoutePerformance, getResponseTimes } from '../api/analytics'
 
 export default function Analytics() {
   const { data: congestion, isLoading: congestionLoading, error: congestionError } = useQuery({
@@ -14,9 +14,19 @@ export default function Analytics() {
     queryFn: getIncidentFrequency,
     refetchInterval: 10000
   })
+  const { data: routePerf, isLoading: routePerfLoading, error: routePerfError } = useQuery({
+    queryKey: ['routePerformance'],
+    queryFn: getRoutePerformance,
+    refetchInterval: 10000
+  })
+  const { data: responseTimes, isLoading: responseTimesLoading, error: responseTimesError } = useQuery({
+    queryKey: ['responseTimes'],
+    queryFn: getResponseTimes,
+    refetchInterval: 10000
+  })
 
-  if (congestionLoading || frequencyLoading) return <div className="p-4">Loading analytics...</div>
-  if (congestionError || frequencyError) return <div className="p-4 text-red-500">Failed to load analytics</div>
+  if (congestionLoading || frequencyLoading || routePerfLoading || responseTimesLoading) return <div className="p-4">Loading analytics...</div>
+  if (congestionError || frequencyError || routePerfError || responseTimesError) return <div className="p-4 text-red-500">Failed to load analytics</div>
 
   return (
     <div className="space-y-4">
@@ -40,6 +50,28 @@ export default function Analytics() {
             </Pie>
             <Tooltip />
           </PieChart>
+        </div>
+        <div className="bg-white p-4 rounded shadow">
+          <h3 className="font-bold mb-2">Route Performance</h3>
+          <ScatterChart width={400} height={200}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="estimated_time" name="Estimated Time" unit=" min" />
+            <YAxis dataKey="actual_time_min" name="Actual Time" unit=" min" />
+            <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+            <Scatter name="Routes" data={routePerf || []} fill="#3b82f6" />
+          </ScatterChart>
+        </div>
+        <div className="bg-white p-4 rounded shadow">
+          <h3 className="font-bold mb-2">Response Times</h3>
+          <LineChart width={400} height={200} data={responseTimes || []}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="hour" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="avg_estimated_time" stroke="#ef4444" name="Avg Estimated Time" />
+            <Line type="monotone" dataKey="request_count" stroke="#3b82f6" name="Request Count" yAxisId={0} />
+          </LineChart>
         </div>
       </div>
     </div>
