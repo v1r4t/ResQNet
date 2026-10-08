@@ -1,6 +1,7 @@
 // frontend/src/pages/Dashboard.tsx
 import { useQuery } from '@tanstack/react-query'
-import { getNetworkState, getIncidents } from '../api/client'
+import { getNetworkState } from '../api/client'
+import { getIncidents } from '../api/incidents'
 import NetworkMap from '../components/map/NetworkMap'
 import StatCard from '../components/ui/StatCard'
 
