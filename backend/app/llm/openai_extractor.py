@@ -7,6 +7,9 @@ from app.llm.extractor import Extractor, ExtractedIncident
 openai.api_key = settings.OPENAI_API_KEY
 
 class OpenAIExtractor(Extractor):
+    source: str = "openai"
+    confidence: float = 0.88
+
     def extract(self, text: str) -> ExtractedIncident:
         response = openai.ChatCompletion.create(
             model="gpt-4",

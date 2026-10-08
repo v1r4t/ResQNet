@@ -3,6 +3,9 @@ import re
 from app.llm.extractor import Extractor, ExtractedIncident
 
 class MockExtractor(Extractor):
+    source: str = "mock"
+    confidence: float = 0.9
+
     def extract(self, text: str) -> ExtractedIncident:
         text_lower = text.lower()
 

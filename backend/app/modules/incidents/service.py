@@ -5,6 +5,8 @@ from app.database import get_connection, release_connection
 from app.llm import get_extractor
 from app.modules.incidents.schemas import IncidentReportInput, ManualIncidentInput
 
+VALID_SEVERITIES = {"low", "medium", "high", "critical"}
+
 def submit_report(raw_text: str) -> dict:
     extractor = get_extractor()
     extracted = extractor.extract(raw_text)
@@ -12,10 +14,10 @@ def submit_report(raw_text: str) -> dict:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            # Insert report
+            # Insert report with dynamic extraction metadata
             cur.execute(
                 "INSERT INTO incident_report (raw_text, extracted_data, extraction_confidence, extraction_source, extraction_fallback) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (raw_text, json.dumps(extracted.model_dump()), 0.9, "mock", True)
+                (raw_text, json.dumps(extracted.model_dump()), extractor.confidence, extractor.source, False)
             )
             report_id = cur.fetchone()[0]
 
@@ -38,8 +40,8 @@ def submit_report(raw_text: str) -> dict:
                 "report_id": report_id,
                 "incident_id": incident_id,
                 "extracted_data": extracted.model_dump(),
-                "extraction_source": "mock",
-                "extraction_fallback": True,
+                "extraction_source": extractor.source,
+                "extraction_fallback": False,
                 "affected_roads": affected_roads
             }
     except Exception as e:
@@ -49,6 +51,9 @@ def submit_report(raw_text: str) -> dict:
         release_connection(conn)
 
 def create_manual_incident(data: ManualIncidentInput) -> dict:
+    if data.severity not in VALID_SEVERITIES:
+        raise ValueError(f"Invalid severity: {data.severity}. Must be one of: {', '.join(VALID_SEVERITIES)}")
+
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -101,15 +106,44 @@ def get_incidents(status: str = None, severity: str = None, zone_id: int = None)
     finally:
         release_connection(conn)
 
+def get_incident_history() -> list[dict]:
+    """Get cleared incidents (incident history)."""
+    return get_incidents(status="cleared")
+
 def clear_incident(incident_id: int) -> dict:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            # Verify incident exists
+            cur.execute("SELECT id FROM incident WHERE id = %s", (incident_id,))
+            if not cur.fetchone():
+                raise ValueError(f"Incident {incident_id} not found")
+
             cur.execute("CALL sp_clear_incident(%s)", (incident_id,))
             conn.commit()
             return {"incident_id": incident_id, "status": "cleared"}
     except Exception as e:
         conn.rollback()
         raise e
+    finally:
+        release_connection(conn)
+
+def get_nearby_incidents(lat: float, lon: float, radius_m: float = 1000) -> list[dict]:
+    """Find active incidents near a location using PostGIS spatial query."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT i.id, i.type, i.severity, i.status, i.description, i.started_at,
+                       ST_Distance(rs.geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326)) AS distance_m
+                FROM incident i
+                JOIN incident_road ir ON i.id = ir.incident_id
+                JOIN road_segment rs ON ir.road_segment_id = rs.id
+                WHERE i.status = 'active'
+                AND ST_DWithin(rs.geom::geography, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, %s)
+                ORDER BY distance_m
+            """, (lon, lat, lon, lat, radius_m))
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
     finally:
         release_connection(conn)

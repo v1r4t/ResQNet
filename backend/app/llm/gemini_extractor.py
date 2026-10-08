@@ -8,6 +8,9 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
 class GeminiExtractor(Extractor):
+    source: str = "gemini"
+    confidence: float = 0.85
+
     def extract(self, text: str) -> ExtractedIncident:
         prompt = f"""Extract incident information from this emergency report. Return JSON only:
 {{"type": "accident|fire|construction|weather|other", "severity": "low|medium|high|critical", "road": "road name", "lanes_blocked": number, "delay_minutes": number, "description": "brief description"}}

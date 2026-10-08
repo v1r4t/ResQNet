@@ -11,6 +11,9 @@ class ExtractedIncident(BaseModel):
     description: str = ""
 
 class Extractor(ABC):
+    source: str = "unknown"
+    confidence: float = 0.9
+
     @abstractmethod
     def extract(self, text: str) -> ExtractedIncident:
         pass

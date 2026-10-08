@@ -1,5 +1,5 @@
 # backend/app/modules/incidents/router.py
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from app.modules.incidents.schemas import IncidentReportInput, ManualIncidentInput, IncidentResponse
 from app.modules.incidents import service
 
@@ -11,7 +11,10 @@ def submit_report(input: IncidentReportInput):
 
 @router.post("/manual")
 def create_manual(input: ManualIncidentInput):
-    return service.create_manual_incident(input)
+    try:
+        return service.create_manual_incident(input)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("")
 def list_incidents(
@@ -23,13 +26,15 @@ def list_incidents(
 
 @router.get("/history")
 def incident_history():
-    return service.get_incidents()
+    return service.get_incident_history()
 
 @router.post("/{incident_id}/clear")
 def clear_incident(incident_id: int):
-    return service.clear_incident(incident_id)
+    try:
+        return service.clear_incident(incident_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.get("/nearby")
 def nearby_incidents(lat: float = Query(...), lon: float = Query(...), radius_m: float = Query(1000)):
-    # PostGIS spatial query
-    pass
+    return service.get_nearby_incidents(lat, lon, radius_m)
