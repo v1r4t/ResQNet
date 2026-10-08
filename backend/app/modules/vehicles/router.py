@@ -1,5 +1,5 @@
 # backend/app/modules/vehicles/router.py
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from app.modules.vehicles.schemas import VehicleCreate, VehicleLocationUpdate
 from app.modules.vehicles import service
 
@@ -19,11 +19,17 @@ def vehicle_status():
 
 @router.post("")
 def create_vehicle(vehicle: VehicleCreate):
-    pass
+    try:
+        return service.create_vehicle(vehicle)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.patch("/{vehicle_id}/location")
 def update_location(vehicle_id: int, update: VehicleLocationUpdate):
-    return service.update_vehicle_location(vehicle_id, update.current_intersection_id)
+    try:
+        return service.update_vehicle_location(vehicle_id, update.current_intersection_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.get("/nearest")
 def nearest_vehicle(intersection_id: int = Query(...), vehicle_type: str = Query(...)):

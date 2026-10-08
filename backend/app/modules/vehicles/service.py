@@ -1,12 +1,14 @@
 # backend/app/modules/vehicles/service.py
 import psycopg
+from typing import Optional
 from app.database import get_connection, release_connection
+from app.modules.vehicles.schemas import VehicleCreate
 
 def get_vehicles(vehicle_type: str = None, status: str = None, zone_id: int = None) -> list[dict]:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            query = "SELECT id, vehicle_type, name, status, current_intersection_id FROM emergency_vehicle"
+            query = "SELECT id, vehicle_type, name, status, current_intersection_id, current_zone_id FROM emergency_vehicle"
             conditions = []
             params = []
             if vehicle_type:
@@ -39,10 +41,37 @@ def get_vehicle_status_summary() -> dict:
     finally:
         release_connection(conn)
 
+def create_vehicle(data: VehicleCreate) -> dict:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            # Verify the referenced intersection exists
+            cur.execute("SELECT id FROM intersection WHERE id = %s", (data.current_intersection_id,))
+            if not cur.fetchone():
+                raise ValueError(f"Intersection {data.current_intersection_id} not found")
+
+            cur.execute(
+                "INSERT INTO emergency_vehicle (vehicle_type, name, status, current_intersection_id, location) VALUES (%s, %s, 'available', %s, (SELECT location FROM intersection WHERE id = %s)) RETURNING id",
+                (data.vehicle_type, data.name, data.current_intersection_id, data.current_intersection_id)
+            )
+            vehicle_id = cur.fetchone()[0]
+            conn.commit()
+            return {"id": vehicle_id, "vehicle_type": data.vehicle_type, "name": data.name}
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        release_connection(conn)
+
 def update_vehicle_location(vehicle_id: int, intersection_id: int) -> dict:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            # Verify vehicle exists before updating
+            cur.execute("SELECT id FROM emergency_vehicle WHERE id = %s", (vehicle_id,))
+            if not cur.fetchone():
+                raise ValueError(f"Vehicle {vehicle_id} not found")
+
             cur.execute(
                 "UPDATE emergency_vehicle SET current_intersection_id = %s WHERE id = %s",
                 (intersection_id, vehicle_id)
@@ -55,17 +84,17 @@ def update_vehicle_location(vehicle_id: int, intersection_id: int) -> dict:
     finally:
         release_connection(conn)
 
-def get_nearest_vehicle(intersection_id: int, vehicle_type: str) -> dict:
+def get_nearest_vehicle(intersection_id: int, vehicle_type: str) -> Optional[dict]:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT ev.id, ev.name, ev.vehicle_type,
-                       ST_Distance(ev.location, i.location) AS distance_m
+                       ST_Distance(ev.location::geography, i.location::geography) AS distance_m
                 FROM emergency_vehicle ev
-                CROSS JOIN intersection i
-                WHERE i.id = %s AND ev.vehicle_type = %s AND ev.status = 'available'
-                ORDER BY ST_Distance(ev.location, i.location)
+                JOIN intersection i ON i.id = %s
+                WHERE ev.vehicle_type = %s AND ev.status = 'available'
+                ORDER BY ST_Distance(ev.location::geography, i.location::geography)
                 LIMIT 1
             """, (intersection_id, vehicle_type))
             row = cur.fetchone()
