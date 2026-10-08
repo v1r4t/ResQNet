@@ -73,11 +73,3 @@ CREATE TRIGGER trg_vehicle_location_sync
     FOR EACH ROW
     WHEN (OLD.current_intersection_id IS DISTINCT FROM NEW.current_intersection_id)
     EXECUTE FUNCTION fn_vehicle_location_sync();
-
--- Stub for sp_recalculate_road_impact (will be replaced in Task 4)
-CREATE OR REPLACE PROCEDURE sp_recalculate_road_impact(p_road_segment_id INTEGER)
-LANGUAGE plpgsql AS $$
-BEGIN
-    NULL; -- Placeholder
-END;
-$$;

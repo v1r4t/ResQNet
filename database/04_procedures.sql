@@ -1,5 +1,12 @@
 -- database/04_procedures.sql
 
+-- The following routines were originally created as PROCEDUREs but are being
+-- converted to FUNCTIONs so they can return result sets. PostgreSQL routines
+-- share a namespace, so the old procedure versions must be dropped first.
+-- These drops are no-ops on a fresh database and idempotent on re-runs.
+DROP PROCEDURE IF EXISTS sp_get_analytics_congestion(INTEGER);
+DROP PROCEDURE IF EXISTS sp_find_nearest_vehicle(INTEGER, VARCHAR);
+
 -- Procedure 1: Process incident report
 CREATE OR REPLACE PROCEDURE sp_process_incident_report(p_report_id INTEGER)
 LANGUAGE plpgsql AS $$
@@ -12,8 +19,12 @@ DECLARE
     v_severity TEXT;
     v_lanes_blocked INTEGER;
     v_description TEXT;
+    v_road_count INTEGER := 0;
 BEGIN
     SELECT extracted_data INTO v_extracted FROM incident_report WHERE id = p_report_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Incident report % does not exist', p_report_id;
+    END IF;
     IF v_extracted IS NULL THEN
         RAISE EXCEPTION 'No extracted data for report %', p_report_id;
     END IF;
@@ -33,6 +44,7 @@ BEGIN
     FOR v_road_id IN
         SELECT id FROM road_segment WHERE name ILIKE '%' || v_road_name || '%'
     LOOP
+        v_road_count := v_road_count + 1;
         INSERT INTO incident_road (incident_id, road_segment_id, impact_level, lanes_blocked)
         VALUES (v_incident_id, v_road_id,
             CASE v_severity
@@ -44,6 +56,10 @@ BEGIN
             v_lanes_blocked
         );
     END LOOP;
+
+    IF v_road_count = 0 THEN
+        RAISE WARNING 'No roads found matching name: %', v_road_name;
+    END IF;
 END;
 $$;
 
@@ -110,14 +126,15 @@ BEGIN
 END;
 $$;
 
--- Procedure 4: Get congestion analytics
-CREATE OR REPLACE PROCEDURE sp_get_analytics_congestion(p_hours_back INTEGER)
+-- Function 4: Get congestion analytics (returns a result set)
+CREATE OR REPLACE FUNCTION sp_get_analytics_congestion(p_hours_back INTEGER)
+RETURNS TABLE(zone_name VARCHAR, avg_travel_time FLOAT, road_count BIGINT)
 LANGUAGE plpgsql AS $$
 BEGIN
-    CREATE TEMP TABLE IF NOT EXISTS temp_congestion AS
-    SELECT z.name AS zone_name,
-           AVG(ts.travel_time_min) AS avg_travel_time,
-           COUNT(*) AS road_count
+    RETURN QUERY
+    SELECT z.name,
+           AVG(ts.travel_time_min)::FLOAT,
+           COUNT(*)::BIGINT
     FROM traffic_state ts
     JOIN road_segment rs ON ts.road_segment_id = rs.id
     JOIN intersection i ON rs.from_intersection_id = i.id
@@ -127,16 +144,22 @@ BEGIN
 END;
 $$;
 
--- Procedure 5: Find nearest vehicle
-CREATE OR REPLACE PROCEDURE sp_find_nearest_vehicle(p_intersection_id INTEGER, p_vehicle_type VARCHAR)
+-- Function 5: Find nearest available vehicle (returns a result set)
+CREATE OR REPLACE FUNCTION sp_find_nearest_vehicle(p_intersection_id INTEGER, p_vehicle_type VARCHAR)
+RETURNS TABLE(id INTEGER, name VARCHAR, vehicle_type VARCHAR, distance_m FLOAT)
 LANGUAGE plpgsql AS $$
 DECLARE
     v_location GEOMETRY;
 BEGIN
-    SELECT location INTO v_location FROM intersection WHERE id = p_intersection_id;
+    SELECT i.location INTO v_location FROM intersection i WHERE i.id = p_intersection_id;
 
+    IF v_location IS NULL THEN
+        RAISE EXCEPTION 'No location found for intersection %', p_intersection_id;
+    END IF;
+
+    RETURN QUERY
     SELECT ev.id, ev.name, ev.vehicle_type,
-           ST_Distance(ev.location, v_location) AS distance_m
+           ST_Distance(ev.location, v_location)::FLOAT
     FROM emergency_vehicle ev
     WHERE ev.vehicle_type = p_vehicle_type AND ev.status = 'available'
     ORDER BY ST_Distance(ev.location, v_location)
