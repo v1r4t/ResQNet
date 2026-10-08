@@ -1,0 +1,23 @@
+# backend/app/llm/openai_extractor.py
+import openai
+from app.config import settings
+from app.llm.extractor import Extractor, ExtractedIncident
+
+openai.api_key = settings.OPENAI_API_KEY
+
+class OpenAIExtractor(Extractor):
+    def extract(self, text: str) -> ExtractedIncident:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": f"Extract incident info from: {text}. Return JSON with keys: type, severity, road, lanes_blocked, delay_minutes, description."}]
+        )
+        import json
+        data = json.loads(response.choices[0].message.content)
+        return ExtractedIncident(
+            type=data["type"],
+            severity=data["severity"],
+            road=data["road"],
+            lanes_blocked=data.get("lanes_blocked", 1),
+            delay=data.get("delay_minutes", 0.0),
+            description=data.get("description", text)
+        )
