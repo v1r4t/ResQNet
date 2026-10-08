@@ -18,7 +18,7 @@ export default function NetworkMap({ roads, intersections, incidents, routes, ve
   useEffect(() => {
     if (!mapContainer.current) return
 
-    map.current = new maplibre-gl.Map({
+    map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://demotiles.maplibre.org/style.json',
       center: [77.15, 13.0],
