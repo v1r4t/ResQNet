@@ -1,4 +1,5 @@
 # backend/app/llm/gemini_extractor.py
+import json
 import google.generativeai as genai
 from app.config import settings
 from app.llm.extractor import Extractor, ExtractedIncident
@@ -14,13 +15,20 @@ class GeminiExtractor(Extractor):
 Report: {text}"""
 
         response = model.generate_content(prompt)
-        import json
-        data = json.loads(response.text)
-        return ExtractedIncident(
-            type=data["type"],
-            severity=data["severity"],
-            road=data["road"],
-            lanes_blocked=data.get("lanes_blocked", 1),
-            delay=data.get("delay_minutes", 0.0),
-            description=data.get("description", text)
-        )
+        try:
+            data = json.loads(response.text)
+            return ExtractedIncident(
+                type=data.get("type", "unknown"),
+                severity=data.get("severity", "medium"),
+                road=data.get("road", "Unknown Road"),
+                lanes_blocked=data.get("lanes_blocked", 1),
+                delay=data.get("delay_minutes", 0.0),
+                description=data.get("description", text)
+            )
+        except (json.JSONDecodeError, KeyError, TypeError):
+            return ExtractedIncident(
+                type="unknown",
+                severity="medium",
+                road="Unknown Road",
+                description=text
+            )
