@@ -8,6 +8,7 @@ class Edge:
     to_node: int
     weight: float
     road_segment_id: int
+    distance_m: float = 0.0
 
 @dataclass
 class RouteResult:
@@ -54,7 +55,7 @@ def dijkstra(graph: dict[int, list[Edge]], start: int, end: int) -> RouteResult 
     segments.reverse()
 
     total_time = dist[end]
-    total_distance = sum(edge.weight for edge in [prev[n][1] for n in path[1:]])
+    total_distance = sum(edge.distance_m for edge in [prev[n][1] for n in path[1:]])
 
     return RouteResult(path=path, segments=segments, total_time=total_time, total_distance=total_distance)
 
@@ -96,6 +97,6 @@ def astar(graph: dict[int, list[Edge]], start: int, end: int, heuristic) -> Rout
     segments.reverse()
 
     total_time = dist[end]
-    total_distance = sum(edge.weight for edge in [prev[n][1] for n in path[1:]])
+    total_distance = sum(edge.distance_m for edge in [prev[n][1] for n in path[1:]])
 
     return RouteResult(path=path, segments=segments, total_time=total_time, total_distance=total_distance)
