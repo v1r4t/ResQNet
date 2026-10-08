@@ -4,12 +4,19 @@ import { getIncidents, clearIncident } from '../api/incidents'
 
 export default function IncidentManage() {
   const queryClient = useQueryClient()
-  const { data: incidents } = useQuery({ queryKey: ['incidents'], queryFn: () => getIncidents() })
+  const { data: incidents, isLoading, error } = useQuery({
+    queryKey: ['incidents'],
+    queryFn: () => getIncidents(),
+    refetchInterval: 10000
+  })
 
   const clearMutation = useMutation({
     mutationFn: clearIncident,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['incidents'] })
   })
+
+  if (isLoading) return <div className="p-4">Loading incidents...</div>
+  if (error) return <div className="p-4 text-red-500">Failed to load incidents</div>
 
   return (
     <div className="space-y-4">
@@ -33,7 +40,11 @@ export default function IncidentManage() {
               <td className="p-2">{incident.status}</td>
               <td className="p-2">
                 {incident.status === 'active' && (
-                  <button onClick={() => clearMutation.mutate(incident.id)} className="bg-red-500 text-white px-2 py-1 rounded text-sm">
+                  <button
+                    onClick={() => clearMutation.mutate(incident.id)}
+                    disabled={clearMutation.isPending}
+                    className="bg-red-500 text-white px-2 py-1 rounded text-sm disabled:opacity-50"
+                  >
                     Clear
                   </button>
                 )}

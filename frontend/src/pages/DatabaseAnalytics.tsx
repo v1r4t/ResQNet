@@ -13,10 +13,11 @@ const QUERIES = [
 
 export default function DatabaseAnalytics() {
   const [selectedQuery, setSelectedQuery] = useState('')
-  const { data: plan } = useQuery({
+  const { data: plan, isLoading, error } = useQuery({
     queryKey: ['explain', selectedQuery],
     queryFn: () => getExplainPlan(selectedQuery),
-    enabled: !!selectedQuery
+    enabled: !!selectedQuery,
+    refetchInterval: 10000
   })
 
   return (
@@ -29,6 +30,8 @@ export default function DatabaseAnalytics() {
           </button>
         ))}
       </div>
+      {selectedQuery && isLoading && <div className="p-4">Loading query plan...</div>}
+      {error && <div className="p-4 text-red-500">Failed to load query plan</div>}
       {plan && (
         <div className="bg-white p-4 rounded shadow">
           <h3 className="font-bold mb-2">Query Plan</h3>

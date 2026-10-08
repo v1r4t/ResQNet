@@ -3,7 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { getNetworkState } from '../api/network'
 
 export default function NetworkExplorer() {
-  const { data: network } = useQuery({ queryKey: ['network'], queryFn: getNetworkState })
+  const { data: network, isLoading, error } = useQuery({
+    queryKey: ['network'],
+    queryFn: getNetworkState,
+    refetchInterval: 10000
+  })
+
+  if (isLoading) return <div className="p-4">Loading network data...</div>
+  if (error) return <div className="p-4 text-red-500">Failed to load network data</div>
 
   return (
     <div className="space-y-4">

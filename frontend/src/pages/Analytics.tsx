@@ -1,13 +1,22 @@
 // frontend/src/pages/Analytics.tsx
 import { useQuery } from '@tanstack/react-query'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts'
-import { getCongestion, getIncidentFrequency, getRoutePerformance, getResponseTimes } from '../api/analytics'
+import { getCongestion, getIncidentFrequency } from '../api/analytics'
 
 export default function Analytics() {
-  const { data: congestion } = useQuery({ queryKey: ['congestion'], queryFn: getCongestion })
-  const { data: frequency } = useQuery({ queryKey: ['frequency'], queryFn: getIncidentFrequency })
-  useQuery({ queryKey: ['performance'], queryFn: getRoutePerformance })
-  useQuery({ queryKey: ['responseTimes'], queryFn: getResponseTimes })
+  const { data: congestion, isLoading: congestionLoading, error: congestionError } = useQuery({
+    queryKey: ['congestion'],
+    queryFn: getCongestion,
+    refetchInterval: 10000
+  })
+  const { data: frequency, isLoading: frequencyLoading, error: frequencyError } = useQuery({
+    queryKey: ['frequency'],
+    queryFn: getIncidentFrequency,
+    refetchInterval: 10000
+  })
+
+  if (congestionLoading || frequencyLoading) return <div className="p-4">Loading analytics...</div>
+  if (congestionError || frequencyError) return <div className="p-4 text-red-500">Failed to load analytics</div>
 
   return (
     <div className="space-y-4">
