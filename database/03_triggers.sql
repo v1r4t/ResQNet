@@ -46,7 +46,7 @@ CREATE TRIGGER trg_route_invalidation
 CREATE OR REPLACE FUNCTION fn_incident_road_update()
 RETURNS TRIGGER AS $$
 BEGIN
-    PERFORM sp_recalculate_road_impact(NEW.road_segment_id);
+    CALL sp_recalculate_road_impact(NEW.road_segment_id);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
