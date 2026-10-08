@@ -1,8 +1,10 @@
 # backend/app/main.py
 from fastapi import FastAPI
 from app.database import pool
+from app.modules.incidents.router import router as incidents_router
 
 app = FastAPI(title="ResQNet API", version="1.0.0")
+app.include_router(incidents_router)
 
 @app.get("/health")
 def health():
