@@ -19,26 +19,35 @@ INSERT INTO zone (city_id, name, polygon) VALUES
 DO $$
 DECLARE
     row_char CHAR;
+    row_idx INTEGER;
     col_num INTEGER;
     zone_id INTEGER;
     lat FLOAT;
     lon FLOAT;
 BEGIN
     FOR row_char IN SELECT chr(64 + i) FROM generate_series(1, 8) i LOOP
+        row_idx := ASCII(row_char) - 64;
         FOR col_num IN 1..8 LOOP
-            lat := 12.9 + (ASCII(row_char) - 65) * 0.0125;
-            lon := 77.0 + (col_num - 1) * 0.0375;
+            lat := 12.9 + (row_idx - 1) * 0.0125;   -- rows 1..8 -> 12.9 .. 12.9875
+            lon := 77.0 + (col_num - 1) * 0.0375;   -- cols 1..8 -> 77.0 .. 77.2625
 
+            -- Zone assignment over the ACTUAL 8x8 grid extent.
+            -- Outer Ring is the outermost ring (border areas); the remaining interior
+            -- (rows 2-7, cols 2-7) is split into the 7 named districts:
+            --   top band    (rows 6-7): Tech Park | North District | Airport Corridor
+            --   left band   (cols 2-3): West Residential
+            --   right band  (cols 6-7): East Industrial
+            --   bottom band (rows 2-3, cols 4-5): South District
+            --   center      (rows 4-5, cols 4-5): Downtown
             zone_id := CASE
-                WHEN lat >= 13.0 AND lon >= 77.15 THEN 6  -- Airport Corridor
-                WHEN lat >= 13.0 AND lon < 77.05 THEN 7    -- Tech Park
-                WHEN lat >= 13.0 THEN 2                    -- North District
-                WHEN lat < 12.95 AND lon >= 77.15 THEN 4   -- East Industrial
-                WHEN lat < 12.95 AND lon < 77.05 THEN 5    -- West Residential
-                WHEN lat < 12.95 THEN 3                    -- South District
-                WHEN lon >= 77.15 THEN 4                   -- East Industrial
-                WHEN lon < 77.05 THEN 5                    -- West Residential
-                ELSE 1                                     -- Downtown
+                WHEN row_idx = 1 OR row_idx = 8 OR col_num = 1 OR col_num = 8 THEN 8  -- Outer Ring (border)
+                WHEN row_idx >= 6 AND col_num <= 3 THEN 7   -- Tech Park (top-left)
+                WHEN row_idx >= 6 AND col_num <= 5 THEN 2   -- North District (top-center)
+                WHEN row_idx >= 6 THEN 6                    -- Airport Corridor (top-right)
+                WHEN col_num <= 3 THEN 5                    -- West Residential (left)
+                WHEN col_num >= 6 THEN 4                    -- East Industrial (right)
+                WHEN row_idx <= 3 THEN 3                    -- South District (bottom-center)
+                ELSE 1                                      -- Downtown (center)
             END;
 
             INSERT INTO intersection (zone_id, name, location)
@@ -125,6 +134,12 @@ INSERT INTO emergency_vehicle (vehicle_type, name, status, current_zone_id, curr
 ('fire_engine', 'Fire-1', 'available', 4, 28, (SELECT location FROM intersection WHERE id = 28)),
 ('police', 'Police-1', 'available', 1, 5, (SELECT location FROM intersection WHERE id = 5)),
 ('police', 'Police-2', 'available', 3, 20, (SELECT location FROM intersection WHERE id = 20));
+
+-- Keep each vehicle's zone consistent with the zone of its current intersection
+UPDATE emergency_vehicle ev
+SET current_zone_id = i.zone_id
+FROM intersection i
+WHERE ev.current_intersection_id = i.id;
 
 -- Initial network version
 INSERT INTO network_version (is_active, snapshot_data) VALUES (TRUE, '{}');
