@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Link } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import IncidentReport from './pages/IncidentReport'
 import IncidentManage from './pages/IncidentManage'
@@ -14,13 +14,13 @@ function App() {
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold">ResQNet</h1>
           <div className="space-x-4">
-            <a href="/" className="hover:underline">Dashboard</a>
-            <a href="/incidents/report" className="hover:underline">Report</a>
-            <a href="/incidents" className="hover:underline">Incidents</a>
-            <a href="/routes" className="hover:underline">Routes</a>
-            <a href="/analytics" className="hover:underline">Analytics</a>
-            <a href="/network" className="hover:underline">Network</a>
-            <a href="/db-analytics" className="hover:underline">DB Analytics</a>
+            <Link to="/" className="hover:underline">Dashboard</Link>
+            <Link to="/incidents/report" className="hover:underline">Report</Link>
+            <Link to="/incidents" className="hover:underline">Incidents</Link>
+            <Link to="/routes" className="hover:underline">Routes</Link>
+            <Link to="/analytics" className="hover:underline">Analytics</Link>
+            <Link to="/network" className="hover:underline">Network</Link>
+            <Link to="/db-analytics" className="hover:underline">DB Analytics</Link>
           </div>
         </div>
       </nav>
