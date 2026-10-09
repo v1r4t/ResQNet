@@ -20,7 +20,7 @@ DECLARE
     v_lanes_blocked INTEGER;
     v_delay_minutes FLOAT;
     v_description TEXT;
-    v_road_count INTEGER := 0;
+    v_road_count INTEGER;
 BEGIN
     SELECT extracted_data INTO v_extracted FROM incident_report WHERE id = p_report_id;
     IF NOT FOUND THEN
@@ -43,10 +43,17 @@ BEGIN
 
     UPDATE incident_report SET incident_id = v_incident_id WHERE id = p_report_id;
 
+    SELECT COUNT(*) INTO v_road_count
+    FROM road_segment WHERE name ILIKE v_road_name;
+    IF v_road_count = 0 THEN
+        RAISE EXCEPTION 'No road found matching location: %', v_road_name;
+    ELSIF v_road_count > 1 THEN
+        RAISE EXCEPTION 'Ambiguous road location: %', v_road_name;
+    END IF;
+
     FOR v_road_id IN
-        SELECT id FROM road_segment WHERE name ILIKE '%' || v_road_name || '%'
+        SELECT id FROM road_segment WHERE name ILIKE v_road_name
     LOOP
-        v_road_count := v_road_count + 1;
         INSERT INTO incident_road (incident_id, road_segment_id, impact_level, lanes_blocked, delay_minutes)
         VALUES (v_incident_id, v_road_id,
             CASE v_severity

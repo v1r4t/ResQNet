@@ -4,81 +4,118 @@ import psycopg
 from app.database import get_connection, release_connection
 from app.modules.routing.dijkstra import dijkstra, Edge
 
-def get_network_snapshot() -> dict:
+class NoAvailableVehicleError(Exception):
+    pass
+
+class NetworkChangedError(Exception):
+    pass
+
+def get_network_snapshot() -> tuple[dict[int, list[Edge]], dict[int, float], int | None]:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT rs.id, rs.from_intersection_id, rs.to_intersection_id,
+                SELECT v.id, rs.id, rs.from_intersection_id, rs.to_intersection_id,
                        rs.distance_m, ts.travel_time_min
                 FROM road_segment rs
                 JOIN traffic_state ts ON rs.id = ts.road_segment_id
+                CROSS JOIN (
+                    SELECT id FROM network_version
+                    WHERE is_active = TRUE
+                    ORDER BY id DESC LIMIT 1
+                ) v
+                WHERE ts.congestion_level <> 'blocked'
             """)
             graph = {}
             segment_times = {}
+            network_version_id = None
             for row in cur.fetchall():
-                road_id, from_id, to_id, dist, time_min = row
+                network_version_id, road_id, from_id, to_id, dist, time_min = row
                 if from_id not in graph:
                     graph[from_id] = []
                 graph[from_id].append(Edge(to_node=to_id, weight=time_min, road_segment_id=road_id, distance_m=dist))
                 segment_times[road_id] = time_min
-            return graph, segment_times
+            return graph, segment_times, network_version_id
     finally:
         release_connection(conn)
 
 def calculate_route(origin_id: int, destination_id: int, vehicle_id: int = None, priority: int = 5, status: str = 'active') -> dict:
-    # Get network snapshot (no transaction held during routing)
-    graph, segment_times = get_network_snapshot()
+    for _ in range(3):
+        graph, segment_times, snapshot_version_id = get_network_snapshot()
+        result = dijkstra(graph, origin_id, destination_id)
+        if result is None:
+            return None
 
-    # Run Dijkstra
-    result = dijkstra(graph, origin_id, destination_id)
-    if result is None:
-        return None
+        conn = get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM network_version
+                    WHERE is_active = TRUE
+                    ORDER BY id DESC LIMIT 1
+                    FOR SHARE
+                """)
+                version_row = cur.fetchone()
+                current_version_id = version_row[0] if version_row else None
+                if current_version_id != snapshot_version_id:
+                    conn.rollback()
+                    continue
 
-    # Store route in DB
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            # Get or create network version
-            cur.execute("SELECT id FROM network_version WHERE is_active = TRUE ORDER BY id DESC LIMIT 1")
-            version_row = cur.fetchone()
-            network_version_id = version_row[0] if version_row else None
+                if vehicle_id is None:
+                    cur.execute("""
+                        SELECT ev.id
+                        FROM emergency_vehicle ev
+                        JOIN intersection i ON i.id = %s
+                        WHERE ev.vehicle_type = 'ambulance'
+                          AND ev.status = 'available'
+                        ORDER BY ST_Distance(ev.location, i.location)
+                        LIMIT 1
+                        FOR UPDATE OF ev SKIP LOCKED
+                    """, (origin_id,))
+                    vehicle_row = cur.fetchone()
+                    if vehicle_row is None:
+                        raise NoAvailableVehicleError("No available vehicle near the origin")
+                    vehicle_id = vehicle_row[0]
+                    cur.execute(
+                        "UPDATE emergency_vehicle SET status = 'en_route' WHERE id = %s",
+                        (vehicle_id,)
+                    )
+                else:
+                    cur.execute(
+                        "SELECT status FROM emergency_vehicle WHERE id = %s FOR UPDATE",
+                        (vehicle_id,)
+                    )
+                    vehicle_row = cur.fetchone()
+                    if vehicle_row is None or vehicle_row[0] != 'available':
+                        raise NoAvailableVehicleError("Requested vehicle is not available")
+                    cur.execute(
+                        "UPDATE emergency_vehicle SET status = 'en_route' WHERE id = %s",
+                        (vehicle_id,)
+                    )
 
-            # Use nearest available vehicle if none provided
-            if vehicle_id is None:
-                cur.execute("SELECT id FROM sp_find_nearest_vehicle(%s, 'ambulance') LIMIT 1", (origin_id,))
-                vehicle_row = cur.fetchone()
-                vehicle_id = vehicle_row[0] if vehicle_row else 1
-
-            # Create route request
-            cur.execute(
-                "INSERT INTO route_request (vehicle_id, origin_id, destination_id, priority) VALUES (%s, %s, %s, %s) RETURNING id",
-                (vehicle_id, origin_id, destination_id, priority)
-            )
-            request_id = cur.fetchone()[0]
-
-            # Create route
-            cur.execute(
-                "INSERT INTO route (request_id, route_type, total_time_min, total_distance_m, status, network_version_id) VALUES (%s, 'fastest', %s, %s, %s, %s) RETURNING id",
-                (request_id, result.total_time, result.total_distance, status, network_version_id)
-            )
-            route_id = cur.fetchone()[0]
-
-            # Create route segments with estimated times
-            for seq, road_id in enumerate(result.segments):
-                est_time = segment_times.get(road_id, 0.0)
                 cur.execute(
-                    "INSERT INTO route_segment (route_id, road_segment_id, sequence_order, estimated_time_min) VALUES (%s, %s, %s, %s)",
-                    (route_id, road_id, seq, est_time)
+                    "INSERT INTO route_request (vehicle_id, origin_id, destination_id, priority) VALUES (%s, %s, %s, %s) RETURNING id",
+                    (vehicle_id, origin_id, destination_id, priority)
                 )
-
-            conn.commit()
-            return {"route_id": route_id, "request_id": request_id, "total_time_min": result.total_time, "total_distance_m": result.total_distance}
-    except Exception as e:
-        conn.rollback()
-        raise e
-    finally:
-        release_connection(conn)
+                request_id = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO route (request_id, route_type, total_time_min, total_distance_m, status, network_version_id) VALUES (%s, 'fastest', %s, %s, %s, %s) RETURNING id",
+                    (request_id, result.total_time, result.total_distance, status, snapshot_version_id)
+                )
+                route_id = cur.fetchone()[0]
+                for seq, road_id in enumerate(result.segments):
+                    cur.execute(
+                        "INSERT INTO route_segment (route_id, road_segment_id, sequence_order, estimated_time_min) VALUES (%s, %s, %s, %s)",
+                        (route_id, road_id, seq, segment_times[road_id])
+                    )
+                conn.commit()
+                return {"route_id": route_id, "request_id": request_id, "total_time_min": result.total_time, "total_distance_m": result.total_distance}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            release_connection(conn)
+    raise NetworkChangedError("Network changed while calculating the route; please retry")
 
 def recalculate_routes() -> dict:
     # Phase 1: Read queue entries and capture all affected route IDs once (dedupe)
@@ -138,7 +175,7 @@ def recalculate_routes() -> dict:
             release_connection(conn)
 
         # Calculate new route with 'recalculated' status to prevent exponential growth
-        result = calculate_route(origin, dest, status='recalculated')
+        result = calculate_route(origin, dest, status='active')
         if result:
             results.append(result)
 

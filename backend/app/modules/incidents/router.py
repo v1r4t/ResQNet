@@ -7,7 +7,10 @@ router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
 @router.post("/report")
 def submit_report(input: IncidentReportInput):
-    return service.submit_report(input.raw_text)
+    try:
+        return service.submit_report(input.raw_text)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 @router.post("/manual")
 def create_manual(input: ManualIncidentInput):

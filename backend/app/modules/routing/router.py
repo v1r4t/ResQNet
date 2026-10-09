@@ -7,9 +7,14 @@ router = APIRouter(prefix="/api/routes", tags=["routing"])
 
 @router.post("/request")
 def request_route(input: RouteRequestInput):
-    result = service.calculate_route(input.origin_id, input.destination_id, input.vehicle_id, input.priority)
+    try:
+        result = service.calculate_route(input.origin_id, input.destination_id, input.vehicle_id, input.priority)
+    except service.NoAvailableVehicleError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except service.NetworkChangedError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if result is None:
-        raise HTTPException(status_code=404, detail="No path found between origin and destination")
+        raise HTTPException(status_code=404, detail="No valid path found between origin and destination")
     return result
 
 @router.post("/recalculate")

@@ -31,7 +31,10 @@ def submit_report(raw_text: str) -> dict:
             report_id = cur.fetchone()[0]
 
             # Process incident
-            cur.execute("CALL sp_process_incident_report(%s)", (report_id,))
+            try:
+                cur.execute("CALL sp_process_incident_report(%s)", (report_id,))
+            except psycopg.errors.RaiseException as e:
+                raise ValueError(str(e).strip()) from e
 
             # Get affected roads
             cur.execute(
@@ -66,15 +69,19 @@ def create_manual_incident(data: ManualIncidentInput) -> dict:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            # Find matching roads
+            cur.execute("SELECT id FROM road_segment WHERE name ILIKE %s", (data.road,))
+            roads = cur.fetchall()
+            if not roads:
+                raise ValueError(f"No road found matching location: {data.road}")
+            if len(roads) > 1:
+                raise ValueError(f"Ambiguous road location '{data.road}'; specify the full road name")
+
             cur.execute(
                 "INSERT INTO incident (type, severity, status, description) VALUES (%s, %s, 'active', %s) RETURNING id",
                 (data.type, data.severity, data.description)
             )
             incident_id = cur.fetchone()[0]
-
-            # Find matching roads
-            cur.execute("SELECT id FROM road_segment WHERE name ILIKE %s", (f"%{data.road}%",))
-            roads = cur.fetchall()
 
             for road in roads:
                 cur.execute(

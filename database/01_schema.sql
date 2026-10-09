@@ -44,6 +44,8 @@ CREATE TABLE road_status_history (
     road_segment_id INTEGER NOT NULL REFERENCES road_segment(id) ON DELETE RESTRICT,
     old_travel_time FLOAT NOT NULL,
     new_travel_time FLOAT NOT NULL,
+    old_congestion_level VARCHAR(20),
+    new_congestion_level VARCHAR(20),
     change_reason VARCHAR(200) NOT NULL,
     changed_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
