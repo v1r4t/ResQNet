@@ -1,5 +1,5 @@
 -- database/06_seed_data.sql
--- Synthetic city grid: 8x8 grid of intersections with named zones
+-- Synthetic city grid for routing simulation. This is not a Bangalore road dataset.
 
 INSERT INTO city (name, bounds) VALUES ('ResQNet City', ST_GeomFromText('POLYGON((77.0 12.9, 77.0 13.1, 77.3 13.1, 77.3 12.9, 77.0 12.9))', 4326));
 

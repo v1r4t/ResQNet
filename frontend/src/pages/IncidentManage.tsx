@@ -21,6 +21,9 @@ export default function IncidentManage() {
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">Manage Incidents</h2>
+      <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
+        Reports below are ResQNet database reports. Live OSRM supplies Bangalore road routes, but it does not provide live traffic incidents.
+      </p>
       <table className="w-full bg-white rounded shadow">
         <thead>
           <tr className="border-b">

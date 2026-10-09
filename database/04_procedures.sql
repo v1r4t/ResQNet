@@ -18,6 +18,7 @@ DECLARE
     v_type TEXT;
     v_severity TEXT;
     v_lanes_blocked INTEGER;
+    v_delay_minutes FLOAT;
     v_description TEXT;
     v_road_count INTEGER := 0;
 BEGIN
@@ -33,6 +34,7 @@ BEGIN
     v_severity := v_extracted->>'severity';
     v_road_name := v_extracted->>'road';
     v_lanes_blocked := COALESCE((v_extracted->>'lanes_blocked')::INTEGER, 1);
+    v_delay_minutes := GREATEST(COALESCE((v_extracted->>'delay')::FLOAT, 0.0), 0.0);
     v_description := v_extracted->>'description';
 
     INSERT INTO incident (type, severity, status, description)
@@ -45,7 +47,7 @@ BEGIN
         SELECT id FROM road_segment WHERE name ILIKE '%' || v_road_name || '%'
     LOOP
         v_road_count := v_road_count + 1;
-        INSERT INTO incident_road (incident_id, road_segment_id, impact_level, lanes_blocked)
+        INSERT INTO incident_road (incident_id, road_segment_id, impact_level, lanes_blocked, delay_minutes)
         VALUES (v_incident_id, v_road_id,
             CASE v_severity
                 WHEN 'low' THEN 'minor'
@@ -53,7 +55,8 @@ BEGIN
                 WHEN 'high' THEN 'severe'
                 WHEN 'critical' THEN 'total'
             END,
-            v_lanes_blocked
+            v_lanes_blocked,
+            v_delay_minutes
         );
     END LOOP;
 
@@ -76,7 +79,7 @@ BEGIN
     FROM road_segment rs WHERE rs.id = p_road_segment_id;
 
     FOR v_incident IN
-        SELECT ir.impact_level, ir.lanes_blocked, rs.lanes
+        SELECT ir.impact_level, ir.lanes_blocked, ir.delay_minutes, rs.lanes
         FROM incident_road ir
         JOIN incident i ON ir.incident_id = i.id
         JOIN road_segment rs ON ir.road_segment_id = rs.id
@@ -89,9 +92,15 @@ BEGIN
             WHEN 'total' THEN 5.0
         END;
         IF v_incident.lanes_blocked >= v_incident.lanes THEN
-            v_multiplier := v_multiplier * 10.0;
+            v_multiplier := v_multiplier * 5.0;
+        END IF;
+        IF v_base_time > 0 THEN
+            v_multiplier := v_multiplier + (v_incident.delay_minutes / v_base_time);
         END IF;
     END LOOP;
+
+    -- Cap congestion multiplier to prevent astronomical values
+    v_multiplier := LEAST(v_multiplier, 20.0);
 
     INSERT INTO traffic_state (road_segment_id, travel_time_min, congestion_level)
     VALUES (p_road_segment_id, v_base_time * v_multiplier,

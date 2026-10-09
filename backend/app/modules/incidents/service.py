@@ -94,7 +94,17 @@ def get_incidents(status: str = None, severity: str = None, zone_id: int = None)
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            query = "SELECT i.id, i.type, i.severity, i.status, i.description, i.started_at, i.cleared_at FROM incident i"
+            query = """
+                SELECT i.id, i.type, i.severity, i.status, i.description, i.started_at, i.cleared_at,
+                       COALESCE(array_agg(DISTINCT rs.name) FILTER (WHERE rs.name IS NOT NULL), '{}') AS road_names,
+                       COALESCE(array_agg(DISTINCT ir.road_segment_id) FILTER (WHERE ir.road_segment_id IS NOT NULL), '{}') AS road_ids,
+                       AVG(ST_X(inter.location)) AS lon,
+                       AVG(ST_Y(inter.location)) AS lat
+                FROM incident i
+                LEFT JOIN incident_road ir ON i.id = ir.incident_id
+                LEFT JOIN road_segment rs ON ir.road_segment_id = rs.id
+                LEFT JOIN intersection inter ON rs.from_intersection_id = inter.id
+            """
             conditions = []
             params = []
             if status:
@@ -108,7 +118,7 @@ def get_incidents(status: str = None, severity: str = None, zone_id: int = None)
                 params.append(zone_id)
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
-            query += " ORDER BY i.started_at DESC"
+            query += " GROUP BY i.id, i.type, i.severity, i.status, i.description, i.started_at, i.cleared_at ORDER BY i.started_at DESC"
             cur.execute(query, params)
             columns = [desc[0] for desc in cur.description]
             return [dict(zip(columns, row)) for row in cur.fetchall()]

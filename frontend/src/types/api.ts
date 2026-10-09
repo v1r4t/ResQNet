@@ -19,17 +19,24 @@ export interface RoadSegment {
   travel_time_min: number
   congestion_level: string
   active_incidents: any[]
+  geometry?: {
+    type: 'LineString'
+    coordinates: [number, number][]
+  }
 }
 
 export interface Intersection {
   id: number
   name: string
   location: string
+  lon?: number
+  lat?: number
 }
 
 export interface NetworkState {
   roads: RoadSegment[]
   intersections: Intersection[]
+  routes: Route[]
 }
 
 export interface Route {

@@ -1,4 +1,4 @@
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import IncidentReport from './pages/IncidentReport'
 import IncidentManage from './pages/IncidentManage'
@@ -7,24 +7,49 @@ import Analytics from './pages/Analytics'
 import NetworkExplorer from './pages/NetworkExplorer'
 import DatabaseAnalytics from './pages/DatabaseAnalytics'
 
+const NAV_ITEMS = [
+  { to: '/', label: 'Overview', icon: '⌂' },
+  { to: '/routes', label: 'Route command', icon: '↗' },
+  { to: '/incidents/report', label: 'Report incident', icon: '＋' },
+  { to: '/incidents', label: 'Incidents', icon: '!' },
+  { to: '/analytics', label: 'Analytics', icon: '⌁' },
+  { to: '/network', label: 'Network', icon: '◈' },
+]
+
 function App() {
+  const location = useLocation()
+  const activeItem = NAV_ITEMS.find((item) => item.to === location.pathname)
+
   return (
-    <div className="min-h-screen bg-gray-100">
-      <nav className="bg-blue-900 text-white p-4">
-        <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold">ResQNet</h1>
-          <div className="space-x-4">
-            <Link to="/" className="hover:underline">Dashboard</Link>
-            <Link to="/incidents/report" className="hover:underline">Report</Link>
-            <Link to="/incidents" className="hover:underline">Incidents</Link>
-            <Link to="/routes" className="hover:underline">Routes</Link>
-            <Link to="/analytics" className="hover:underline">Analytics</Link>
-            <Link to="/network" className="hover:underline">Network</Link>
-            <Link to="/db-analytics" className="hover:underline">DB Analytics</Link>
+    <div className="app-shell">
+      <div className="ambient ambient-cyan" />
+      <div className="ambient ambient-violet" />
+      <nav className="topbar">
+        <div className="brand-lockup">
+          <div className="brand-mark">R<span>Q</span></div>
+          <div>
+            <div className="brand-name">ResQNet</div>
+            <div className="brand-subtitle">Emergency operations</div>
           </div>
         </div>
+        <div className="nav-links">
+          {NAV_ITEMS.map((item) => (
+            <Link key={item.to} to={item.to} className={`nav-link ${location.pathname === item.to ? 'nav-link-active' : ''}`}>
+              {item.label}
+            </Link>
+          ))}
+        </div>
+        <div className="system-status">
+          <span className="status-dot" />
+          <span>Network live</span>
+        </div>
       </nav>
-      <main className="container mx-auto p-4">
+      <main className="app-content">
+        <div className="page-context">
+          <span>Workspace</span>
+          <span className="context-divider">/</span>
+          <span>{activeItem?.label || 'Command view'}</span>
+        </div>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/incidents/report" element={<IncidentReport />} />
@@ -35,6 +60,11 @@ function App() {
           <Route path="/db-analytics" element={<DatabaseAnalytics />} />
         </Routes>
       </main>
+      <footer className="app-footer">
+        <span>RESQNET OS 1.0</span>
+        <span>Live routing intelligence for emergency response</span>
+        <span className="footer-pulse"><span className="status-dot" /> systems nominal</span>
+      </footer>
     </div>
   )
 }

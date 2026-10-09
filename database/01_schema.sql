@@ -63,6 +63,7 @@ CREATE TABLE incident_road (
     road_segment_id INTEGER NOT NULL REFERENCES road_segment(id) ON DELETE RESTRICT,
     impact_level VARCHAR(20) NOT NULL CHECK (impact_level IN ('minor','moderate','severe','total')),
     lanes_blocked INTEGER NOT NULL CHECK (lanes_blocked >= 0),
+    delay_minutes FLOAT NOT NULL DEFAULT 0 CHECK (delay_minutes >= 0),
     PRIMARY KEY (incident_id, road_segment_id)
 );
 

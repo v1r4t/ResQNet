@@ -6,7 +6,10 @@ export default defineConfig({
   server: {
     port: 3001,
     proxy: {
-      '/api': 'http://backend:8000'
+      '/api': {
+        target: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:8000',
+        changeOrigin: true
+      }
     }
   }
 })

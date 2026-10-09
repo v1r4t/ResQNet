@@ -5,6 +5,7 @@ from typing import Optional
 class NetworkStateResponse(BaseModel):
     roads: list[dict]
     intersections: list[dict]
+    routes: list[dict] = []
 
 class NetworkVersionResponse(BaseModel):
     id: int
